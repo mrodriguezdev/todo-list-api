@@ -28,7 +28,11 @@ public class JwtService {
     public String issue(User user) {
         Instant now = Instant.now();
         JwtClaimsSet claims = JwtClaimsSet.builder().issuer(issuer)
-                .subject(user.getId().toString()).issuedAt(now).expiresAt(now.plus(ttl)).build();
+                .subject(user.getId().toString())
+                .claim("id", user.getId())
+                .claim("username", user.getUsername())
+                .claim("name", String.format("%s %s", user.getFirstName(), user.getLastName()))
+                .issuedAt(now).expiresAt(now.plus(ttl)).build();
         return this.encoder.encode(JwtEncoderParameters.from(
                 JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
     }

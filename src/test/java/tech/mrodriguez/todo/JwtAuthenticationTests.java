@@ -22,6 +22,11 @@ import tech.mrodriguez.todo.model.entity.User;
 import tech.mrodriguez.todo.repository.UserRepository;
 import tech.mrodriguez.todo.service.*;
 import java.time.Instant;
+import java.time.Duration;
+import java.util.Map;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
 import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -32,17 +37,25 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebAppConfiguration
 @TestPropertySource(properties = {
         "app.jwt.secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-        "app.jwt.issuer=todo-list-api", "app.jwt.ttl=PT30M"})
+        "app.jwt.issuer=todo-list-api", "app.jwt.ttl=PT10M"})
 class JwtAuthenticationTests {
     @Configuration
     @EnableWebMvc
     @EnableWebSecurity
     @Import({SecurityConfig.class, JwtConfig.class, PasswordConfig.class, JwtService.class,
-            AuthController.class, UserController.class, AuthService.class, UserService.class,
-            EncryptService.class, AuthMapper.class, UserMapper.class, GlobalExceptionHandler.class})
+            AuthController.class, ProtectedController.class, AuthService.class,
+            EncryptService.class, UserMapper.class, GlobalExceptionHandler.class})
     static class Config {
         @Bean UserRepository userRepository() { return mock(UserRepository.class); }
     }
+    @RestController
+    static class ProtectedController {
+        @GetMapping("/test/authenticated")
+        Map<String, String> authenticated(JwtAuthenticationToken authentication) {
+            return Map.of("username", authentication.getToken().getClaimAsString("username"));
+        }
+    }
+
     @Autowired WebApplicationContext context;
     @Autowired UserRepository repository;
     @Autowired PasswordEncoder passwords;
@@ -56,9 +69,9 @@ class JwtAuthenticationTests {
         user.setId(1L);
         user.setUsername("mario");
         user.setFirstName("Mario");
+        user.setLastName("Rodriguez");
         user.setPasswordHash(passwords.encode("password123"));
         when(repository.findByUsername("mario")).thenReturn(Optional.of(user));
-        when(repository.findById(1L)).thenReturn(Optional.of(user));
         when(repository.save(any(User.class))).thenAnswer(invocation -> {
             User saved = invocation.getArgument(0);
             saved.setId(2L);
@@ -72,27 +85,32 @@ class JwtAuthenticationTests {
         String registeredToken = com.jayway.jsonpath.JsonPath.read(registration.getResponse().getContentAsString(), "$.token");
         assertEquals("2", decoder.decode(registeredToken).getSubject());
         assertNull(registration.getRequest().getSession(false));
-        mvc.perform(get("/users/me")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/test/authenticated")).andExpect(status().isUnauthorized());
         mvc.perform(post("/auth/login").contentType("application/json")
                 .content("{\"username\":\"mario\",\"password\":\"wrong\"}"))
                 .andExpect(status().isUnauthorized());
         var login = mvc.perform(post("/auth/login").contentType("application/json")
                 .content("{\"username\":\"mario\",\"password\":\"password123\"}"))
-                .andExpect(status().isOk()).andReturn();
+                .andExpect(status().isOk()).andExpect(jsonPath("$.user").doesNotExist()).andReturn();
         String token = com.jayway.jsonpath.JsonPath.read(login.getResponse().getContentAsString(), "$.token");
         assertNull(login.getRequest().getSession(false));
-        assertEquals("1", decoder.decode(token).getSubject());
-        mvc.perform(get("/users/me").header("Authorization", "Bearer " + token))
+        var jwt = decoder.decode(token);
+        assertEquals("1", jwt.getSubject());
+        assertEquals(1L, ((Number) jwt.getClaim("id")).longValue());
+        assertEquals("mario", jwt.getClaimAsString("username"));
+        assertEquals("Mario Rodriguez", jwt.getClaimAsString("name"));
+        assertEquals(Duration.ofMinutes(10), Duration.between(jwt.getIssuedAt(), jwt.getExpiresAt()));
+        mvc.perform(get("/test/authenticated").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.username").value("mario"));
         String[] parts = token.split("\\.");
         parts[2] = (parts[2].startsWith("A") ? "B" : "A") + parts[2].substring(1);
-        mvc.perform(get("/users/me").header("Authorization", "Bearer " + String.join(".", parts)))
+        mvc.perform(get("/test/authenticated").header("Authorization", "Bearer " + String.join(".", parts)))
                 .andExpect(status().isUnauthorized());
         var expired = JwtClaimsSet.builder().issuer("todo-list-api").subject("1")
                 .issuedAt(Instant.now().minusSeconds(3600)).expiresAt(Instant.now().minusSeconds(120)).build();
         String expiredToken = encoder.encode(JwtEncoderParameters.from(
                 JwsHeader.with(MacAlgorithm.HS256).build(), expired)).getTokenValue();
-        mvc.perform(get("/users/me").header("Authorization", "Bearer " + expiredToken))
+        mvc.perform(get("/test/authenticated").header("Authorization", "Bearer " + expiredToken))
                 .andExpect(status().isUnauthorized());
     }
 }

@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import tech.mrodriguez.todo.exception.CustomException;
-import tech.mrodriguez.todo.mapper.AuthMapper;
 import tech.mrodriguez.todo.mapper.UserMapper;
 import tech.mrodriguez.todo.model.dto.AuthResponse;
 import tech.mrodriguez.todo.model.dto.LoginRequest;
@@ -17,7 +16,6 @@ import tech.mrodriguez.todo.repository.UserRepository;
 public class AuthService {
 
     private final UserRepository userRepository;
-    private final AuthMapper authMapper;
     private final UserMapper userMapper;
     private final EncryptService encryptService;
     private final JwtService jwtService;
@@ -28,7 +26,7 @@ public class AuthService {
         User user = this.userMapper.toUser(request);
         user.setPasswordHash(this.encryptService.encode(request.password()));
         User savedUser = this.userRepository.save(user);
-        return this.authMapper.toAuthResponse(savedUser, this.jwtService.issue(savedUser));
+        return new AuthResponse(this.jwtService.issue(savedUser));
     }
 
     private void validateEmailExists(String email) {
@@ -48,7 +46,7 @@ public class AuthService {
         if (!this.encryptService.match(request.password(), user.getPasswordHash())) {
             throw new CustomException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
-        return this.authMapper.toAuthResponse(user, jwtService.issue(user));
+        return new AuthResponse(this.jwtService.issue(user));
     }
 
     private User findUserForLogin(String username) {
