@@ -21,6 +21,7 @@ import tech.mrodriguez.todo.mapper.*;
 import tech.mrodriguez.todo.model.entity.User;
 import tech.mrodriguez.todo.repository.UserRepository;
 import tech.mrodriguez.todo.service.*;
+import tech.mrodriguez.todo.interceptor.RateLimitInterceptor;
 import java.time.Instant;
 import java.time.Duration;
 import java.util.Map;
@@ -37,19 +38,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebAppConfiguration
 @TestPropertySource(properties = {
         "app.jwt.secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-        "app.jwt.issuer=todo-list-api", "app.jwt.ttl=PT10M"})
+        "app.jwt.issuer=todo-list-api", "app.jwt.ttl=PT10M",
+        "app.rate-limit.requests-per-minute=60"})
 class JwtAuthenticationTests {
     @Configuration
     @EnableWebMvc
     @EnableWebSecurity
     @Import({SecurityConfig.class, JwtConfig.class, PasswordConfig.class, JwtService.class,
             AuthController.class, ProtectedController.class, AuthService.class,
-            EncryptService.class, UserMapper.class, GlobalExceptionHandler.class})
+            EncryptService.class, UserMapper.class, GlobalExceptionHandler.class,
+            WebConfig.class, RateLimitInterceptor.class, RateLimitService.class})
     static class Config {
         @Bean UserRepository userRepository() { return mock(UserRepository.class); }
     }
     @RestController
     static class ProtectedController {
+        @GetMapping("/tasks/rate-limit-test")
+        Map<String, String> limited() {
+            return Map.of("message", "ok");
+        }
+
         @GetMapping("/test/authenticated")
         Map<String, String> authenticated(JwtAuthenticationToken authentication) {
             return Map.of("username", authentication.getToken().getClaimAsString("username"));
@@ -61,6 +69,37 @@ class JwtAuthenticationTests {
     @Autowired PasswordEncoder passwords;
     @Autowired JwtDecoder decoder;
     @Autowired JwtEncoder encoder;
+
+    @Test
+    void limitsByJwtSubjectAndKeepsUsersIndependent() throws Exception {
+        var mvc = MockMvcBuilders.webAppContextSetup(context)
+                .addFilters(context.getBean("springSecurityFilterChain", Filter.class)).build();
+        mvc.perform(get("/tasks/rate-limit-test")).andExpect(status().isUnauthorized());
+
+        String firstToken = tokenFor("rate-user-1");
+        for (int i = 0; i < 60; i++) {
+            mvc.perform(get("/tasks/rate-limit-test").header("Authorization", "Bearer " + firstToken))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("X-Rate-Limit-Remaining", String.valueOf(59 - i)));
+        }
+        // Issuing another JWT for the same user must not reset their quota.
+        mvc.perform(get("/tasks/rate-limit-test").header("Authorization", "Bearer " + tokenFor("rate-user-1")))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(header().string("X-Rate-Limit-Remaining", "0"))
+                .andExpect(jsonPath("$.status").value(429));
+        mvc.perform(get("/tasks/rate-limit-test").header("Authorization", "Bearer " + tokenFor("rate-user-2")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Rate-Limit-Remaining", "59"));
+    }
+
+    private String tokenFor(String subject) {
+        Instant now = Instant.now();
+        var claims = JwtClaimsSet.builder().issuer("todo-list-api").subject(subject)
+                .issuedAt(now).expiresAt(now.plusSeconds(600)).build();
+        return encoder.encode(JwtEncoderParameters.from(
+                JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
+    }
 
     @Test
     void registerLoginAndAuthenticateWithoutSessionOrCsrf() throws Exception {
