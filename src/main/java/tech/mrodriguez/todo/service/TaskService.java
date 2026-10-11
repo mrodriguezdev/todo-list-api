@@ -1,11 +1,16 @@
 package tech.mrodriguez.todo.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tech.mrodriguez.todo.exception.CustomException;
 import tech.mrodriguez.todo.mapper.TaskMapper;
+import tech.mrodriguez.todo.model.dto.PageResponse;
+import tech.mrodriguez.todo.model.dto.TaskFilterRequest;
 import tech.mrodriguez.todo.model.dto.TaskRequest;
 import tech.mrodriguez.todo.model.dto.TaskResponse;
 import tech.mrodriguez.todo.model.entity.Task;
@@ -23,9 +28,14 @@ public class TaskService {
     private final TaskRepository taskRepository;
     private final TaskMapper taskMapper;
 
-    public List<TaskResponse> list(Long userId) {
+    public PageResponse<List<TaskResponse>> list(Long userId, TaskFilterRequest filter) {
         User user = this.userService.findById(userId);
-        return this.taskMapper.toTaskResponses(this.taskRepository.findByUser_Id(user.getId()));
+        Pageable pageable = PageRequest.of(filter.page() - 1, filter.limit());
+        Page<Task> pageTask = filter.title() == null || filter.title().isBlank()
+                ? this.taskRepository.findByUserId(user.getId(), pageable)
+                : this.taskRepository.findByUserIdAndTitleLike(user.getId(), "%" + filter.title() + "%", pageable);
+        List<TaskResponse> tasks = this.taskMapper.toTaskResponses(pageTask.toList());
+        return new PageResponse<>(tasks, filter.page(), filter.limit(), pageTask.getTotalElements());
     }
 
     public TaskResponse findById(Long userId, Long taskId) {

@@ -9,6 +9,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
@@ -101,22 +104,90 @@ class TaskControllerTests {
 
     @Test
     void listsOnlyTasksOfAuthenticatedUser() throws Exception {
-        when(tasks.findByUser_Id(1L)).thenReturn(List.of(task));
+        when(tasks.findByUserId(eq(1L), any(Pageable.class))).thenAnswer(invocation ->
+                new PageImpl<>(List.of(task), invocation.getArgument(1, Pageable.class), 11));
         mvc.perform(authenticated(get("/tasks")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].id").value(10))
-                .andExpect(jsonPath("$[0].title").value("Terminar API"))
-                .andExpect(jsonPath("$[0].description").value("Agregar pruebas"))
-                .andExpect(jsonPath("$[0].user").doesNotExist());
-        verify(tasks).findByUser_Id(1L);
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value(10))
+                .andExpect(jsonPath("$.data[0].title").value("Terminar API"))
+                .andExpect(jsonPath("$.data[0].description").value("Agregar pruebas"))
+                .andExpect(jsonPath("$.data[0].user").doesNotExist())
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.limit").value(5))
+                .andExpect(jsonPath("$.total").value(11));
+        verify(tasks).findByUserId(eq(1L), argThat(p -> p.getPageNumber() == 0 && p.getPageSize() == 5));
         verify(tasks, never()).findAll();
     }
 
     @Test
+    void filtersTitleWithinAuthenticatedUsersTasksAndPaginates() throws Exception {
+        when(tasks.findByUserIdAndTitleLike(eq(1L), eq("%API%"), any(Pageable.class)))
+                .thenAnswer(invocation -> new PageImpl<>(List.of(task),
+                        invocation.getArgument(2, Pageable.class), 6));
+        mvc.perform(authenticated(get("/tasks").param("title", "API")
+                        .param("page", "2").param("limit", "5")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].title").value("Terminar API"))
+                .andExpect(jsonPath("$.page").value(2))
+                .andExpect(jsonPath("$.limit").value(5))
+                .andExpect(jsonPath("$.total").value(6));
+        verify(tasks).findByUserIdAndTitleLike(eq(1L), eq("%API%"),
+                argThat(p -> p.getPageNumber() == 1 && p.getPageSize() == 5));
+        verify(tasks, never()).findByUserId(anyLong(), any(Pageable.class));
+    }
+
+    @Test
+    void returnsEmptyPageWhenTitleDoesNotMatch() throws Exception {
+        when(tasks.findByUserIdAndTitleLike(eq(1L), eq("%missing%"), any(Pageable.class)))
+                .thenAnswer(invocation -> Page.empty(invocation.getArgument(2, Pageable.class)));
+        mvc.perform(authenticated(get("/tasks").param("title", "missing")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isEmpty())
+                .andExpect(jsonPath("$.total").value(0));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "   "})
+    void ignoresBlankTitleFilter(String title) throws Exception {
+        when(tasks.findByUserId(eq(1L), any(Pageable.class)))
+                .thenAnswer(invocation -> Page.empty(invocation.getArgument(1, Pageable.class)));
+        mvc.perform(authenticated(get("/tasks").param("title", title)))
+                .andExpect(status().isOk());
+        verify(tasks).findByUserId(eq(1L), any(Pageable.class));
+        verify(tasks, never()).findByUserIdAndTitleLike(anyLong(), anyString(), any(Pageable.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"page", "limit"})
+    void rejectsInvalidPagination(String parameter) throws Exception {
+        for (String value : List.of("0", "-1", "abc")) {
+            mvc.perform(authenticated(get("/tasks").param(parameter, value)))
+                    .andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(users, tasks);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"page", "limit"})
+    void returnsPaginationValidationMessage(String parameter) throws Exception {
+        String name = parameter.equals("page") ? "Page" : "Limit";
+        mvc.perform(authenticated(get("/tasks").param(parameter, "0")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message")
+                        .value(parameter + ": " + name + " must be greater than or equal to 1"));
+        verifyNoInteractions(users, tasks);
+    }
+
+    @Test
     void returnsEmptyListWhenUserHasNoTasks() throws Exception {
+        when(tasks.findByUserId(eq(1L), any(Pageable.class))).thenAnswer(invocation ->
+                Page.empty(invocation.getArgument(1, Pageable.class)));
         mvc.perform(authenticated(get("/tasks")))
-                .andExpect(status().isOk()).andExpect(content().json("[]"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isEmpty())
+                .andExpect(jsonPath("$.total").value(0));
     }
 
     @Test

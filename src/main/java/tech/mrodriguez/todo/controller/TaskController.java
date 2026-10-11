@@ -7,6 +7,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import tech.mrodriguez.todo.model.dto.PageResponse;
+import tech.mrodriguez.todo.model.dto.TaskFilterRequest;
 import tech.mrodriguez.todo.model.dto.TaskRequest;
 import tech.mrodriguez.todo.model.dto.TaskResponse;
 import tech.mrodriguez.todo.service.TaskService;
@@ -21,9 +23,10 @@ public class TaskController {
     private final TaskService taskService;
 
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<TaskResponse>> list(Authentication authentication) {
+    public ResponseEntity<PageResponse<List<TaskResponse>>> list(Authentication authentication,
+                                                                 @Valid @ModelAttribute TaskFilterRequest filter) {
         return ResponseEntity.ok()
-                .body(this.taskService.list(Long.parseLong(authentication.getName())));
+                .body(this.taskService.list(Long.parseLong(authentication.getName()), filter));
     }
 
     @GetMapping(value = "{taskId}", produces = MediaType.APPLICATION_JSON_VALUE)
