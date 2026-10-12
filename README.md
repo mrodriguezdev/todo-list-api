@@ -14,6 +14,7 @@ El objetivo es practicar desarrollo backend: desde la persistencia y las operaci
 - [Instalación](#instalación)
 - [Uso](#uso)
 - [Endpoints](#endpoints)
+- [Swagger y OpenAPI](#swagger-y-openapi)
 - [Rate limiting](#rate-limiting)
 - [Pruebas](#pruebas)
 - [Principios aplicados](#principios-aplicados)
@@ -31,6 +32,7 @@ El objetivo es practicar desarrollo backend: desde la persistencia y las operaci
 - Listado de tareas con paginación y filtro por título.
 - Persistencia en PostgreSQL.
 - Límite configurable de peticiones por minuto por usuario autenticado.
+- Documentación interactiva con Swagger UI y especificación OpenAPI.
 
 ## Requisitos
 
@@ -179,6 +181,17 @@ El listado usa `page=1` y `limit=5` por defecto; `title` es opcional.
 El JWT vence a los 10 minutos por defecto, según `app.jwt.ttl`. Cuando expire,
 es necesario iniciar sesión de nuevo. No se implementa refresh token.
 
+## Swagger y OpenAPI
+
+Con la aplicación en ejecución, abre:
+
+- [Swagger UI](http://localhost:8080/swagger-ui/index.html).
+- [Especificación OpenAPI en JSON](http://localhost:8080/v3/api-docs).
+
+La documentación es pública. Para probar las tareas, ejecuta `/auth/register`
+o `/auth/login`, copia el campo `token` y pégalo en **Authorize**, sin el prefijo
+`Bearer`. Las peticiones a tareas requieren JWT y están sujetas al rate limiting.
+
 ## Rate limiting
 
 La variable de entorno `RATE_LIMIT_REQUESTS_PER_MINUTE` configura las peticiones permitidas por
@@ -203,7 +216,7 @@ simple conserva un bucket por cada usuario que accede a las tareas.
 Pruebas automatizadas de autenticación, tareas y rate limiting:
 
 ```bash
-./mvnw -Dtest=JwtAuthenticationTests,TaskControllerTests test
+./mvnw -Dtest=JwtAuthenticationTests,TaskControllerTests,OpenApiTests test
 ```
 
 ## Principios aplicados
@@ -233,6 +246,7 @@ Estas mejoras quedan fuera del alcance de la implementación actual.
 
 - [Reto Todo List API de roadmap.sh](https://roadmap.sh/projects/todo-list-api).
 - [Spring Boot](https://docs.spring.io/spring-boot/index.html).
+- [springdoc-openapi](https://springdoc.org/).
 - [Spring Security](https://docs.spring.io/spring-security/reference/index.html).
 - [Spring Security — JWT](https://docs.spring.io/spring-security/reference/servlet/oauth2/resource-server/jwt.html).
 - [Spring Data JPA](https://docs.spring.io/spring-data/jpa/reference/index.html).
