@@ -22,6 +22,7 @@ public class SecurityConfig {
             response.getWriter().write("{\"message\":\"Invalid or missing token\",\"status\":401}");
         };
         http.authorizeHttpRequests(auth -> auth
+                .requestMatchers(HttpMethod.GET, "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login").permitAll()
                 .anyRequest().authenticated())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
