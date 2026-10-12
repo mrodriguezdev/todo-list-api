@@ -17,6 +17,7 @@ El objetivo es practicar desarrollo backend: desde la persistencia y las operaci
 - [Rate limiting](#rate-limiting)
 - [Pruebas](#pruebas)
 - [Principios aplicados](#principios-aplicados)
+- [Mejoras futuras](#mejoras-futuras)
 - [Referencias](#referencias)
 
 ## Características
@@ -213,11 +214,28 @@ Pruebas automatizadas de autenticación, tareas y rate limiting:
 - Validación de datos y manejo centralizado de errores.
 - Autenticación mediante JWT y autorización según el propietario de cada tarea.
 
+## Mejoras futuras
+
+Como siguiente paso, se podría integrar este proyecto con el reto
+[Multi-Container Application de roadmap.sh](https://roadmap.sh/projects/multi-container-service),
+adaptando su propuesta a Spring Boot y PostgreSQL. Esto permitiría practicar
+contenedores y despliegue con la API existente:
+
+- Crear una imagen Docker de la API.
+- Ejecutar la API y PostgreSQL con Docker Compose, usando un volumen para persistir los datos.
+- Preparar un servidor remoto con Terraform y configurarlo con Ansible.
+- Automatizar la construcción y el despliegue mediante GitHub Actions.
+- Incorporar Nginx como proxy inverso de forma opcional.
+
+Estas mejoras quedan fuera del alcance de la implementación actual.
+
 ## Referencias
 
 - [Reto Todo List API de roadmap.sh](https://roadmap.sh/projects/todo-list-api).
 - [Spring Boot](https://docs.spring.io/spring-boot/index.html).
 - [Spring Security](https://docs.spring.io/spring-security/reference/index.html).
+- [Spring Security — JWT](https://docs.spring.io/spring-security/reference/servlet/oauth2/resource-server/jwt.html).
 - [Spring Data JPA](https://docs.spring.io/spring-data/jpa/reference/index.html).
 - [Bucket4j](https://bucket4j.com/).
+- [Baeldung — Rate Limiting a Spring API Using Bucket4j](https://www.baeldung.com/spring-bucket4j).
 - [PostgreSQL](https://www.postgresql.org/docs/).
